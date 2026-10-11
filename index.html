@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股全市场行情看板 · 自选股</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>📊 A股全市场行情看板 · 自选股</h1>
+    <div class="sub">沪深北三大交易所 · 实时行情 + 证监会行业 + 自选股 | 数据源：<strong>同花顺行情 API + BaoStock</strong></div>
+  </div>
+  <div class="header-actions">
+    <button class="fs-btn" data-action="minus" onclick="changeFontSize(-1)" title="缩小字体">A−</button>
+    <button class="fs-display" id="fsDisplay" onclick="resetFontSize()" title="恢复默认 100%">100%</button>
+    <button class="fs-btn" data-action="plus" onclick="changeFontSize(1)" title="放大字体">A+</button>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="切换主题">🌙</button>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-item"><span class="stat-label">上市公司总数</span><span class="stat-value" id="statTotal">--</span></div>
+  <div class="stat-item"><span class="stat-label">沪市主板</span><span class="stat-value" id="statShMain">--</span></div>
+  <div class="stat-item"><span class="stat-label">深市主板</span><span class="stat-value" id="statSzMain">--</span></div>
+  <div class="stat-item"><span class="stat-label">创业板</span><span class="stat-value green" id="statGem">--</span></div>
+  <div class="stat-item"><span class="stat-label">科创板</span><span class="stat-value cyan" id="statStar">--</span></div>
+  <div class="stat-item"><span class="stat-label">北交所</span><span class="stat-value" id="statBj">--</span></div>
+  <div class="stat-item"><span class="stat-label">行业大类数</span><span class="stat-value" id="statIndustry">--</span></div>
+  <div class="stat-item"><span class="stat-label">自选分组 / 股票</span><span class="stat-value" id="statWatchCount">--</span></div>
+  <div class="stat-item"><span class="stat-label">上涨 / 下跌</span><span class="stat-value" id="statUpDown">-- / --</span></div>
+</div>
+
+<div class="controls">
+  <input type="text" id="searchInput" placeholder="搜索代码 / 名称 / 行业...">
+  <button class="btn outline" onclick="resetFilters()" title="清空所有筛选">↻ 重置</button>
+
+  <select id="watchFilter" title="自选分组"></select>
+
+  <select id="marketFilter" title="市场板块">
+    <option value="all">全部市场板块</option>
+    <option value="沪市主板">沪市主板</option>
+    <option value="深市主板">深市主板</option>
+    <option value="创业板">创业板</option>
+    <option value="科创板">科创板</option>
+    <option value="北交所">北交所</option>
+  </select>
+
+  <select id="eraFilterTop" title="上市年代">
+    <option value="all">全部年代</option>
+    <option value="1990">1990-1999</option>
+    <option value="2000">2000-2009</option>
+    <option value="2010">2010-2019</option>
+    <option value="2020">2020 至今</option>
+  </select>
+
+  <select id="industryFilterTop" title="证监会行业"></select>
+
+  <select id="sortSelect" title="排序">
+    <option value="code_asc">按代码 ↑</option>
+    <option value="chg_desc">按涨跌幅 ↓</option>
+    <option value="chg_asc">按涨跌幅 ↑</option>
+    <option value="turnover_desc">按成交额 ↓</option>
+    <option value="volume_desc">按成交量 ↓</option>
+    <option value="price_desc">按现价 ↓</option>
+    <option value="price_asc">按现价 ↑</option>
+    <option value="amplitude_desc">按振幅 ↓</option>
+    <option value="pe_asc">按市盈率 ↑</option>
+    <option value="pb_asc">按市净率 ↑</option>
+    <option value="list_date_desc">按上市日期 ↓</option>
+  </select>
+
+  <button class="btn ths" id="loadThsBtn" onclick="loadDataFromTHS()">🔴 从同花顺API加载</button>
+  <button class="btn outline" onclick="loadDemoData()">📦 演示数据</button>
+  <button class="btn export" id="exportDailyBtn" onclick="exportDailyData()" title="将今日涨跌股票按板块和行业分类，保存到本地文件夹">📊 导出今日涨跌分类</button>
+  <button class="btn outline" id="changeDirBtn" onclick="changeDataDir()" style="display:none;" title="更换数据保存目录">📁 换目录</button>
+
+  <span style="font-size:var(--fs-md);color:var(--text-dim);margin-left:auto;" id="dataStatus">等待加载...</span>
+</div>
+
+<div class="adv-panel">
+  <div class="adv-head" onclick="toggleAdv()">
+    <span>🎯 高级选股筛选 <span class="adv-badge" id="advBadge" style="display:none">0</span></span>
+    <span class="adv-toggle" id="advToggleIcon">收起 ▲</span>
+  </div>
+  <div class="adv-body" id="advBody">
+
+    <div class="adv-row" id="advRowPrice">
+      <span class="adv-label">价格 (元)</span>
+      <input type="number" id="fPriceMin" class="adv-input" placeholder="最低" step="0.01" oninput="onAdvInput(this)">
+      <span class="adv-sep">~</span>
+      <input type="number" id="fPriceMax" class="adv-input" placeholder="最高" step="0.01" oninput="onAdvInput(this)">
+      <span class="quick-btns">
+        <button onclick="setRange('fPriceMin','fPriceMax','',5,this)">&lt;5</button>
+        <button onclick="setRange('fPriceMin','fPriceMax',5,10,this)">5~10</button>
+        <button onclick="setRange('fPriceMin','fPriceMax',10,20,this)">10~20</button>
+        <button onclick="setRange('fPriceMin','fPriceMax',20,50,this)">20~50</button>
+        <button onclick="setRange('fPriceMin','fPriceMax',50,100,this)">50~100</button>
+        <button onclick="setRange('fPriceMin','fPriceMax',100,'',this)">&gt;100</button>
+      </span>
+      <button class="row-reset" onclick="resetAdvRow('advRowPrice')">↻ 重置</button>
+    </div>
+
+    <div class="adv-row" id="advRowChg">
+      <span class="adv-label">涨跌幅 (%)</span>
+      <input type="number" id="fChgMin" class="adv-input" placeholder="最低" step="0.1" oninput="onAdvInput(this)">
+      <span class="adv-sep">~</span>
+      <input type="number" id="fChgMax" class="adv-input" placeholder="最高" step="0.1" oninput="onAdvInput(this)">
+      <span class="quick-btns">
+        <button onclick="setRange('fChgMin','fChgMax',5,'',this)">涨幅&gt;5%</button>
+        <button onclick="setRange('fChgMin','fChgMax',0,5,this)">0~5%</button>
+        <button onclick="setRange('fChgMin','fChgMax',-5,0,this)">-5~0%</button>
+        <button onclick="setRange('fChgMin','fChgMax','',-5,this)">跌幅&gt;5%</button>
+      </span>
+      <button class="row-reset" onclick="resetAdvRow('advRowChg')">↻ 重置</button>
+    </div>
+
+    <div class="adv-row" id="advRowAmp">
+      <span class="adv-label">振幅 (%)</span>
+      <input type="number" id="fAmpMin" class="adv-input" placeholder="最低" step="0.1" oninput="onAdvInput(this)">
+      <span class="adv-sep">~</span>
+      <input type="number" id="fAmpMax" class="adv-input" placeholder="最高" step="0.1" oninput="onAdvInput(this)">
+      <span class="quick-btns">
+        <button onclick="setRange('fAmpMin','fAmpMax',5,'',this)">&gt;5%</button>
+        <button onclick="setRange('fAmpMin','fAmpMax',8,'',this)">&gt;8%</button>
+        <button onclick="setRange('fAmpMin','fAmpMax','',2,this)">&lt;2%</button>
+      </span>
+      <button class="row-reset" onclick="resetAdvRow('advRowAmp')">↻ 重置</button>
+    </div>
+
+    <div class="adv-row" id="advRowPe">
+      <span class="adv-label">市盈率 TTM</span>
+      <input type="number" id="fPeMin" class="adv-input" placeholder="最低" step="0.1" oninput="onAdvInput(this)">
+      <span class="adv-sep">~</span>
+      <input type="number" id="fPeMax" class="adv-input" placeholder="最高" step="0.1" oninput="onAdvInput(this)">
+      <span class="quick-btns">
+        <button onclick="setRange('fPeMin','fPeMax',0,15,this)">0~15</button>
+        <button onclick="setRange('fPeMin','fPeMax',15,30,this)">15~30</button>
+        <button onclick="setRange('fPeMin','fPeMax',30,60,this)">30~60</button>
+        <button onclick="setRange('fPeMin','fPeMax',0,99999,this)">仅正PE</button>
+      </span>
+      <button class="row-reset" onclick="resetAdvRow('advRowPe')">↻ 重置</button>
+    </div>
+
+    <div class="adv-row" id="advRowPb">
+      <span class="adv-label">市净率 PB</span>
+      <input type="number" id="fPbMin" class="adv-input" placeholder="最低" step="0.1" oninput="onAdvInput(this)">
+      <span class="adv-sep">~</span>
+      <input type="number" id="fPbMax" class="adv-input" placeholder="最高" step="0.1" oninput="onAdvInput(this)">
+      <span class="quick-btns">
+        <button onclick="setRange('fPbMin','fPbMax','',1,this)">&lt;1 破净</button>
+        <button onclick="setRange('fPbMin','fPbMax',1,3,this)">1~3</button>
+        <button onclick="setRange('fPbMin','fPbMax',3,10,this)">3~10</button>
+      </span>
+      <button class="row-reset" onclick="resetAdvRow('advRowPb')">↻ 重置</button>
+    </div>
+
+    <div class="adv-row" id="advRowTo">
+      <span class="adv-label">成交额 (亿)</span>
+      <input type="number" id="fToMin" class="adv-input" placeholder="最低" step="0.1" oninput="onAdvInput(this)">
+      <span class="adv-sep">~</span>
+      <input type="number" id="fToMax" class="adv-input" placeholder="最高" step="0.1" oninput="onAdvInput(this)">
+      <span class="quick-btns">
+        <button onclick="setRange('fToMin','fToMax',1,'',this)">&gt;1亿</button>
+        <button onclick="setRange('fToMin','fToMax',5,'',this)">&gt;5亿</button>
+        <button onclick="setRange('fToMin','fToMax',20,'',this)">&gt;20亿</button>
+      </span>
+      <button class="row-reset" onclick="resetAdvRow('advRowTo')">↻ 重置</button>
+    </div>
+
+    <div class="adv-row" id="advRowOther">
+      <span class="adv-label">其它条件</span>
+      <label class="chk"><input type="checkbox" id="fExST" onchange="applyFilters()"> 排除 ST / *ST / 退市</label>
+      <label class="chk"><input type="checkbox" id="fOnlyQuote" onchange="applyFilters()"> 仅显示有行情</label>
+      <label class="chk"><input type="checkbox" id="fOnlyUp" onchange="applyFilters()"> 仅显示上涨</label>
+      <label class="chk"><input type="checkbox" id="fOnlyLimitUp" onchange="applyFilters()"> 仅显示涨停</label>
+      <button class="row-reset" onclick="resetAdvRow('advRowOther')">↻ 重置</button>
+      <button class="btn outline" onclick="clearAdv()">✕ 清空全部</button>
+    </div>
+
+  </div>
+</div>
+
+<div style="padding: 14px 22px 0;">
+  <div class="error-banner" id="errorBanner">
+    <span id="errorMsg"></span>
+    <span class="close-x" onclick="hideError()">×</span>
+  </div>
+
+  <div class="api-key-panel">
+    <label>🔑 同花顺 API Key：</label>
+    <input type="password" id="thsApiKey" placeholder="输入你的 X-api-key">
+    <button class="btn ths" onclick="saveApiKey()">保存 Key</button>
+    <span class="hint">Key 仅存本地。⚠️ 泄露请立即吊销。<a href="https://fuyao.aicubes.cn/admin" target="_blank" style="color:var(--accent)">fuyao.aicubes.cn/admin</a></span>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar" id="sidebar">
+    <h3>
+      <span>⭐ 我的自选</span>
+      <span class="clear-btn" onclick="createGroupInteractive()" title="新建自选分组">+ 新建</span>
+    </h3>
+    <div id="watchlistTree"></div>
+    <h3>按市场板块</h3>
+    <div id="marketTree"></div>
+    <h3>按上市年代</h3>
+    <div id="eraTree"></div>
+    <h3>
+      <span>按证监会行业</span>
+      <span class="clear-btn" onclick="clearIndustry()">清空</span>
+    </h3>
+    <div id="industryTree"></div>
+  </div>
+
+  <div class="main">
+    <div class="note">
+      <strong>➕ 自选：</strong>表格最左侧 <b>+</b> 加入自选，加入后变成 <b>−</b>，再点移除。
+      第一次添加会弹出命名框（<b>留空自动用「自选1」并按 1、2、3… 依次编号，删除后编号会复用不再累加</b>）。
+      左侧「+ 新建」可手动建组，<b>双击分组名可重命名</b>。数据保存在本地。
+    </div>
+    <div class="note warn">
+      <strong>📊 每日分类：</strong>点工具栏「<b>导出今日涨跌分类</b>」→ 选一个保存目录 → 自动生成
+      <code>YYYY-MM-DD/</code> 文件夹，内含<b>总览统计</b>、<b>上涨/下跌/平盘</b>按<b>板块→行业→个股</b>的三层分类 JSON，以及 Excel 可读的 CSV。
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="no-sort">自选</th>
+            <th data-sort="code_asc">代码</th>
+            <th>名称</th>
+            <th>市场</th>
+            <th data-sort="industry_asc">证监会行业</th>
+            <th>上市日期</th>
+            <th data-sort="price_desc">现价</th>
+            <th data-sort="chg_desc">涨跌幅</th>
+            <th>涨跌额</th>
+            <th data-sort="amplitude_desc">振幅</th>
+            <th>开盘</th>
+            <th>最高</th>
+            <th>最低</th>
+            <th>昨收</th>
+            <th>涨停</th>
+            <th>跌停</th>
+            <th data-sort="turnover_desc">成交额(亿)</th>
+            <th data-sort="volume_desc">成交量(万手)</th>
+            <th data-sort="pe_asc">PE(TTM)</th>
+            <th data-sort="pb_asc">PB</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="pagination">
+      <button class="icon-btn" onclick="goFirst()" id="firstBtn" title="第一页">⏮</button>
+      <button class="nav-btn" onclick="changePage(-1)" id="prevBtn">← 上一页</button>
+      <div class="page-numbers" id="pageNumbers"></div>
+      <button class="nav-btn" onclick="changePage(1)" id="nextBtn">下一页 →</button>
+      <button class="icon-btn" onclick="goLast()" id="lastBtn" title="最后一页">⏭</button>
+      <div class="page-jump">
+        <input type="number" id="jumpInput" min="1" placeholder="页码" onkeydown="if(event.key==='Enter')jumpToPage()">
+        <button class="icon-btn" onclick="jumpToPage()">↵</button>
+      </div>
+      <span class="page-info" id="pageInfo">第 1 / 1 页 · 共 0 只</span>
+    </div>
+  </div>
+</div>
+
+<div class="floating-actions">
+  <button class="float-btn top" onclick="scrollToTop()" aria-label="回到顶部">
+    ⬆<span class="float-tip">回到顶部</span>
+  </button>
+  <button class="float-btn home" onclick="goFirstAndTop()" aria-label="回到首页">
+    ⏮<span class="float-tip">回到首页（第1页）</span>
+  </button>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">正在获取同花顺数据...</div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle">提示</div>
+    <div class="modal-desc" id="modalDesc"></div>
+    <input type="text" id="modalInput" class="modal-input" maxlength="24" autocomplete="off" spellcheck="false">
+    <div class="modal-actions">
+      <button class="btn outline" id="modalCancel">取消</button>
+      <button class="btn" id="modalOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="industry_map.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
